@@ -156,95 +156,95 @@ def handle_transaction(user_id: str, message: str) -> str:
 if FASTAPI_AVAILABLE:
     @app.post('/webhook')
     async def webhook(request: Request):
-    """Webhook endpoint cho Zalo Bot"""
-    try:
-        # Đọc raw body để verify signature
-        raw_data = await request.body()
-        signature = request.headers.get('X-Zalo-Signature', '')
-        
-        if not verify_zalo_signature(raw_data, signature):
-            raise HTTPException(status_code=401, detail='Invalid signature')
-        
-        data = await request.json()
-        print(f"📥 Received webhook data: {json.dumps(data, ensure_ascii=False, indent=2)}")
-        
-        # Hỗ trợ cả Zalo Bot Platform mới và API cũ
-        event = data.get('event') or data.get('event_name')
-        
-        # Zalo Bot Platform: "message.text.received"
-        # API cũ: "user_send_text"
-        if event not in ['user_send_text', 'message.text.received']:
-            print(f"⚠️  Ignoring event: {event}")
-            return JSONResponse(content={'status': 'ok'})
-        
-        # Lấy message text và user_id (hỗ trợ cả 2 format)
-        message_obj = data.get('message', {})
-        
-        # Zalo Bot Platform format
-        if 'text' in message_obj:
-            message_text = message_obj.get('text', '').strip()
-            # Lấy user_id từ from.id hoặc chat.id
-            from_obj = message_obj.get('from', {})
-            user_id = str(from_obj.get('id', '') or message_obj.get('chat', {}).get('id', ''))
-        else:
-            # API cũ format
-            message_text = message_obj.get('text', '').strip()
-            user_id = str(data.get('sender', {}).get('id', ''))
-        
-        print(f"💬 Message from user {user_id}: {message_text}")
-        
-        if not message_text or not user_id:
-            print("⚠️  Missing message_text or user_id")
-            return JSONResponse(content={'status': 'ok'})
-        
-        response_message = ""
-        
-        # Kiểm tra lệnh thống kê
-        if any(keyword in message_text.lower() for keyword in ['thống kê', 'thong ke', 'tk', 'stat']):
-            print("📊 Processing statistics command")
-            response_message = handle_statistics_command(user_id, message_text)
-        else:
-            print("💰 Processing transaction")
-            response_message = handle_transaction(user_id, message_text)
-        
-        if response_message:
-            print(f"📤 Sending response: {response_message[:100]}...")
-            success = zalo_service.send_text_message(user_id, response_message)
-            if success:
-                print("✅ Message sent successfully")
+        """Webhook endpoint cho Zalo Bot"""
+        try:
+            # Đọc raw body để verify signature
+            raw_data = await request.body()
+            signature = request.headers.get('X-Zalo-Signature', '')
+            
+            if not verify_zalo_signature(raw_data, signature):
+                raise HTTPException(status_code=401, detail='Invalid signature')
+            
+            data = await request.json()
+            print(f"📥 Received webhook data: {json.dumps(data, ensure_ascii=False, indent=2)}")
+            
+            # Hỗ trợ cả Zalo Bot Platform mới và API cũ
+            event = data.get('event') or data.get('event_name')
+            
+            # Zalo Bot Platform: "message.text.received"
+            # API cũ: "user_send_text"
+            if event not in ['user_send_text', 'message.text.received']:
+                print(f"⚠️  Ignoring event: {event}")
+                return JSONResponse(content={'status': 'ok'})
+            
+            # Lấy message text và user_id (hỗ trợ cả 2 format)
+            message_obj = data.get('message', {})
+            
+            # Zalo Bot Platform format
+            if 'text' in message_obj:
+                message_text = message_obj.get('text', '').strip()
+                # Lấy user_id từ from.id hoặc chat.id
+                from_obj = message_obj.get('from', {})
+                user_id = str(from_obj.get('id', '') or message_obj.get('chat', {}).get('id', ''))
             else:
-                print("❌ Failed to send message")
-        else:
-            print("⚠️  No response message to send")
-        
-        return JSONResponse(content={'status': 'ok'})
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in webhook: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+                # API cũ format
+                message_text = message_obj.get('text', '').strip()
+                user_id = str(data.get('sender', {}).get('id', ''))
+            
+            print(f"💬 Message from user {user_id}: {message_text}")
+            
+            if not message_text or not user_id:
+                print("⚠️  Missing message_text or user_id")
+                return JSONResponse(content={'status': 'ok'})
+            
+            response_message = ""
+            
+            # Kiểm tra lệnh thống kê
+            if any(keyword in message_text.lower() for keyword in ['thống kê', 'thong ke', 'tk', 'stat']):
+                print("📊 Processing statistics command")
+                response_message = handle_statistics_command(user_id, message_text)
+            else:
+                print("💰 Processing transaction")
+                response_message = handle_transaction(user_id, message_text)
+            
+            if response_message:
+                print(f"📤 Sending response: {response_message[:100]}...")
+                success = zalo_service.send_text_message(user_id, response_message)
+                if success:
+                    print("✅ Message sent successfully")
+                else:
+                    print("❌ Failed to send message")
+            else:
+                print("⚠️  No response message to send")
+            
+            return JSONResponse(content={'status': 'ok'})
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"Error in webhook: {e}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
 
     @app.post('/')
     async def root_webhook(request: Request):
-    """Webhook endpoint tại root path (fallback)"""
-    print("📥 Received request at root path /")
-    # Redirect đến webhook handler
-    return await webhook(request)
+        """Webhook endpoint tại root path (fallback)"""
+        print("📥 Received request at root path /")
+        # Redirect đến webhook handler
+        return await webhook(request)
 
-@app.get('/')
-async def root():
-    """Root endpoint"""
-    return JSONResponse(content={
-        'status': 'ok',
-        'message': 'Bot Chi Tieu API',
-        'endpoints': {
-            'webhook': '/webhook (POST)',
-            'health': '/health (GET)'
-        }
-    })
+    @app.get('/')
+    async def root():
+        """Root endpoint"""
+        return JSONResponse(content={
+            'status': 'ok',
+            'message': 'Bot Chi Tieu API',
+            'endpoints': {
+                'webhook': '/webhook (POST)',
+                'health': '/health (GET)'
+            }
+        })
 
     @app.get('/health')
     async def health():
