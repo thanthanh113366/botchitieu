@@ -1,4 +1,5 @@
-from PIL import Image, ImageDraw, ImageFont
+# Comment out để giảm dependencies cho Vercel
+# Function này tạm thời disabled để giảm size
 import io
 from typing import Dict
 from datetime import datetime
@@ -15,11 +16,19 @@ def create_statistics_image(stats: Dict, month: int = None, year: int = None) ->
     Returns:
         bytes: Hình ảnh dưới dạng bytes
     """
-    # Kích thước hình ảnh
-    width = 800
-    height = 1000
-    img = Image.new('RGB', (width, height), color='white')
-    draw = ImageDraw.Draw(img)
+    # Function disabled để giảm dependencies cho Vercel
+    # Cần PIL/Pillow để chạy function này
+    raise NotImplementedError(
+        "Image generation disabled to reduce Vercel function size. "
+        "Install pillow for local use: pip install pillow"
+    )
+    
+    # Code below is disabled
+    # from PIL import Image, ImageDraw, ImageFont
+    # width = 800
+    # height = 1000
+    # img = Image.new('RGB', (width, height), color='white')
+    # draw = ImageDraw.Draw(img)
     
     # Màu sắc
     color_bg = (240, 240, 240)

@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from services.nlp_processor import NLPProcessor
 from services.google_sheets import GoogleSheetsService
 from services.zalo_bot import ZaloBotService
-from utils.statistics_image import create_statistics_image
+# from utils.statistics_image import create_statistics_image  # Comment out để giảm size
 from config import ZALO_SECRET_KEY
 
 # Khởi tạo services (có thể cache trong production)
@@ -83,15 +83,7 @@ def handle_statistics_command(user_id: str, message: str) -> str:
         # Lấy thống kê
         stats = sheets_service.get_statistics(user_id=user_id, month=month, year=year)
         
-        # Tạo hình ảnh
-        image_bytes = create_statistics_image(stats, month=month, year=year)
-        
-        # Upload image lên một nơi public (Vercel Blob hoặc Cloudinary)
-        # Tạm thời, chúng ta sẽ cần upload lên một service khác
-        # Hoặc có thể gửi dưới dạng base64 (nhưng Zalo cần URL)
-        
-        # TODO: Upload image và lấy URL
-        # Tạm thời trả về text
+        # Trả về text (không tạo hình ảnh để giảm size cho Vercel)
         total_thu = stats.get('total_thu', 0)
         total_chi = stats.get('total_chi', 0)
         chenh_lech = total_thu - total_chi

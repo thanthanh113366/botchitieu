@@ -1,19 +1,31 @@
 """
 Local development server (FastAPI) - Dùng để test trước khi deploy lên Vercel
 Chạy: python app.py hoặc uvicorn app:app --reload
+
+Lưu ý: Cần cài fastapi và uvicorn cho local dev:
+  pip install fastapi uvicorn
 """
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+try:
+    from fastapi import FastAPI, Request, HTTPException
+    from fastapi.responses import JSONResponse
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    FASTAPI_AVAILABLE = False
+    print("⚠️  FastAPI not installed. Install with: pip install fastapi uvicorn")
+
 import json
 import hmac
 import hashlib
 from services.nlp_processor import NLPProcessor
 from services.google_sheets import GoogleSheetsService
 from services.zalo_bot import ZaloBotService
-from utils.statistics_image import create_statistics_image
+# from utils.statistics_image import create_statistics_image  # Comment out để giảm dependencies
 from config import ZALO_SECRET_KEY
 
-app = FastAPI(title="Bot Chi Tieu", description="Zalo Bot for expense tracking")
+if FASTAPI_AVAILABLE:
+    app = FastAPI(title="Bot Chi Tieu", description="Zalo Bot for expense tracking")
+else:
+    app = None
 
 # Khởi tạo services
 sheets_service = GoogleSheetsService()
@@ -141,8 +153,9 @@ def handle_transaction(user_id: str, message: str) -> str:
         traceback.print_exc()
         return "❌ Có lỗi xảy ra. Vui lòng thử lại sau."
 
-@app.post('/webhook')
-async def webhook(request: Request):
+if FASTAPI_AVAILABLE:
+    @app.post('/webhook')
+    async def webhook(request: Request):
     """Webhook endpoint cho Zalo Bot"""
     try:
         # Đọc raw body để verify signature
@@ -214,8 +227,8 @@ async def webhook(request: Request):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post('/')
-async def root_webhook(request: Request):
+    @app.post('/')
+    async def root_webhook(request: Request):
     """Webhook endpoint tại root path (fallback)"""
     print("📥 Received request at root path /")
     # Redirect đến webhook handler
@@ -233,12 +246,20 @@ async def root():
         }
     })
 
-@app.get('/health')
-async def health():
-    """Health check endpoint"""
-    return JSONResponse(content={'status': 'ok'})
+    @app.get('/health')
+    async def health():
+        """Health check endpoint"""
+        return JSONResponse(content={'status': 'ok'})
 
-if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run(app, host='0.0.0.0', port=5000)
+    if __name__ == '__main__':
+        try:
+            import uvicorn
+            uvicorn.run(app, host='0.0.0.0', port=5000)
+        except ImportError:
+            print("❌ uvicorn not installed. Install with: pip install uvicorn")
+else:
+    if __name__ == '__main__':
+        print("⚠️  FastAPI not available. This file is for local development only.")
+        print("   For Vercel deployment, use api/webhook.py")
+        print("   To run locally, install: pip install fastapi uvicorn")
 
