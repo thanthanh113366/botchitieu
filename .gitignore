@@ -5,6 +5,7 @@
 # Google credentials
 credentials/
 *.json
+!vercel.json
 service_account.json
 
 # Python
