@@ -168,105 +168,158 @@ def handle_transaction(user_id: str, message: str) -> str:
         print(f"Error handling transaction: {e}")
         return "❌ Có lỗi xảy ra. Vui lòng thử lại sau."
 
-from http.server import BaseHTTPRequestHandler
-import json as json_module
+# Vercel có thể dùng FastAPI với adapter
+try:
+    from fastapi import FastAPI, Request
+    from fastapi.responses import JSONResponse
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    FASTAPI_AVAILABLE = False
 
-class handler(BaseHTTPRequestHandler):
-    """
-    Vercel Serverless Function Handler
-    Vercel sẽ tự động gọi class này
-    """
+if FASTAPI_AVAILABLE:
+    # Dùng FastAPI cho Vercel
+    app = FastAPI()
     
-    def do_POST(self):
-        """Xử lý POST request từ Zalo webhook"""
+    @app.post('/api/webhook')
+    @app.post('/')
+    async def webhook_handler(request: Request):
+        """Webhook handler với FastAPI"""
         try:
-            # Đọc request body
-            content_length = int(self.headers.get('Content-Length', 0))
-            raw_body = self.rfile.read(content_length)
-            raw_body_str = raw_body.decode('utf-8')
+            # Đọc raw body
+            raw_data = await request.body()
+            signature = request.headers.get('X-Zalo-Signature', '')
             
             # Verify signature
-            signature = self.headers.get('X-Zalo-Signature', '')
-            if not verify_zalo_signature(raw_body, signature):
-                self.send_response(401)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json_module.dumps({'error': 'Invalid signature'}).encode())
-                return
+            if not verify_zalo_signature(raw_data, signature):
+                return JSONResponse(content={'error': 'Invalid signature'}, status_code=401)
             
             # Parse JSON
-            data = json_module.loads(raw_body_str)
+            data = await request.json()
             
-            # Kiểm tra event type (hỗ trợ cả format mới và cũ)
+            # Kiểm tra event type
             event = data.get('event') or data.get('event_name')
-            
-            # Zalo Bot Platform: "message.text.received"
-            # API cũ: "user_send_text"
             if event not in ['user_send_text', 'message.text.received']:
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
-                return
+                return JSONResponse(content={'status': 'ok'})
             
-            # Lấy thông tin tin nhắn (hỗ trợ cả 2 format)
+            # Lấy thông tin tin nhắn
             message_obj = data.get('message', {})
-            
-            # Zalo Bot Platform format
             if 'text' in message_obj:
                 message_text = message_obj.get('text', '').strip()
                 from_obj = message_obj.get('from', {})
                 user_id = str(from_obj.get('id', '') or message_obj.get('chat', {}).get('id', ''))
             else:
-                # API cũ format
                 message_text = message_obj.get('text', '').strip()
                 user_id = str(data.get('sender', {}).get('id', ''))
             
             if not message_text or not user_id:
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
-                return
+                return JSONResponse(content={'status': 'ok'})
             
             # Xử lý lệnh
             zalo_service = get_zalo_service()
             response_message = ""
             
-            # Kiểm tra lệnh thống kê
             if any(keyword in message_text.lower() for keyword in ['thống kê', 'thong ke', 'tk', 'stat']):
                 response_message = handle_statistics_command(user_id, message_text)
             else:
-                # Xử lý giao dịch
                 response_message = handle_transaction(user_id, message_text)
             
-            # Gửi phản hồi
             if response_message:
                 zalo_service.send_text_message(user_id, response_message)
             
-            # Response
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
+            return JSONResponse(content={'status': 'ok'})
             
         except Exception as e:
             print(f"Error in handler: {e}")
             import traceback
             traceback.print_exc()
-            self.send_response(500)
+            return JSONResponse(content={'error': str(e)}, status_code=500)
+    
+    @app.get('/health')
+    async def health():
+        return JSONResponse(content={'status': 'ok'})
+    
+    # Vercel sẽ tự động detect FastAPI app
+    handler = app
+    
+else:
+    # Fallback: Dùng BaseHTTPRequestHandler nếu không có FastAPI
+    from http.server import BaseHTTPRequestHandler
+    import json as json_module
+
+    class handler(BaseHTTPRequestHandler):
+        """Vercel Serverless Function Handler (fallback)"""
+        
+        def do_POST(self):
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                raw_body = self.rfile.read(content_length)
+                raw_body_str = raw_body.decode('utf-8')
+                
+                signature = self.headers.get('X-Zalo-Signature', '')
+                if not verify_zalo_signature(raw_body, signature):
+                    self.send_response(401)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps({'error': 'Invalid signature'}).encode())
+                    return
+                
+                data = json_module.loads(raw_body_str)
+                event = data.get('event') or data.get('event_name')
+                
+                if event not in ['user_send_text', 'message.text.received']:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
+                    return
+                
+                message_obj = data.get('message', {})
+                if 'text' in message_obj:
+                    message_text = message_obj.get('text', '').strip()
+                    from_obj = message_obj.get('from', {})
+                    user_id = str(from_obj.get('id', '') or message_obj.get('chat', {}).get('id', ''))
+                else:
+                    message_text = message_obj.get('text', '').strip()
+                    user_id = str(data.get('sender', {}).get('id', ''))
+                
+                if not message_text or not user_id:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
+                    return
+                
+                zalo_service = get_zalo_service()
+                response_message = ""
+                
+                if any(keyword in message_text.lower() for keyword in ['thống kê', 'thong ke', 'tk', 'stat']):
+                    response_message = handle_statistics_command(user_id, message_text)
+                else:
+                    response_message = handle_transaction(user_id, message_text)
+                
+                if response_message:
+                    zalo_service.send_text_message(user_id, response_message)
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
+                
+            except Exception as e:
+                print(f"Error in handler: {e}")
+                import traceback
+                traceback.print_exc()
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json_module.dumps({'error': str(e)}).encode())
+        
+        def do_GET(self):
+            self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
-            self.wfile.write(json_module.dumps({'error': str(e)}).encode())
-    
-    def do_GET(self):
-        """Health check"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
-    
-    def log_message(self, format, *args):
-        """Override để không log mỗi request"""
-        pass
+            self.wfile.write(json_module.dumps({'status': 'ok'}).encode())
+        
+        def log_message(self, format, *args):
+            pass
 
