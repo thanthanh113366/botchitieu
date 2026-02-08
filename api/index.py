@@ -161,7 +161,6 @@ def handle_transaction(user_id: str, message: str) -> str:
         return "❌ Có lỗi xảy ra. Vui lòng thử lại sau."
 
 @app.post('/webhook')
-@app.post('/')
 async def webhook(request: Request):
     """Webhook endpoint cho Zalo Bot"""
     try:
