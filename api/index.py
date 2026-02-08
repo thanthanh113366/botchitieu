@@ -8,14 +8,16 @@ import json
 import hmac
 import hashlib
 import os
-import sys
 
-# Thêm root path để import modules
-root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_path not in sys.path:
-    sys.path.insert(0, root_path)
+# Import từ root (Vercel tự động thêm root vào PYTHONPATH)
+from config import ZALO_SECRET_KEY, validate_config
 
-from config import ZALO_SECRET_KEY
+# Validate config khi khởi tạo
+try:
+    validate_config()
+except ValueError as e:
+    print(f"⚠️  Config validation warning: {e}")
+    # Không raise để tránh fail build, nhưng sẽ fail khi runtime
 
 # Khởi tạo FastAPI app
 app = FastAPI(title="Bot Chi Tieu", description="Zalo Bot for expense tracking")
@@ -42,7 +44,12 @@ def get_zalo_service():
 
 def verify_zalo_signature(data: bytes, signature: str) -> bool:
     """Xác thực signature từ Zalo"""
+    # Nếu không có secret key, bỏ qua verification (chỉ cho local dev)
     if not ZALO_SECRET_KEY or ZALO_SECRET_KEY.strip() == '':
+        if os.getenv('VERCEL') == '1':
+            # Trên Vercel, nếu không có secret key thì reject
+            print("⚠️  Warning: ZALO_SECRET_KEY not set in production")
+            return False
         return True
     
     try:
@@ -54,6 +61,9 @@ def verify_zalo_signature(data: bytes, signature: str) -> bool:
         return hmac.compare_digest(signature, expected_signature)
     except Exception as e:
         print(f"Error verifying signature: {e}")
+        # Trên production, lỗi verify = reject
+        if os.getenv('VERCEL') == '1':
+            return False
         return True
 
 def handle_statistics_command(user_id: str, message: str) -> str:

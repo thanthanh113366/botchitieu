@@ -19,13 +19,18 @@ import hashlib
 from services.nlp_processor import NLPProcessor
 from services.google_sheets import GoogleSheetsService
 from services.zalo_bot import ZaloBotService
-# from utils.statistics_image import create_statistics_image  # Comment out để giảm dependencies
-from config import ZALO_SECRET_KEY
+from config import ZALO_SECRET_KEY, validate_config
 
 if FASTAPI_AVAILABLE:
     app = FastAPI(title="Bot Chi Tieu", description="Zalo Bot for expense tracking")
 else:
     app = None
+
+# Validate config
+try:
+    validate_config()
+except ValueError as e:
+    print(f"⚠️  Config validation warning: {e}")
 
 # Khởi tạo services
 sheets_service = GoogleSheetsService()
@@ -34,11 +39,10 @@ zalo_service = ZaloBotService()
 def verify_zalo_signature(data: bytes, signature: str) -> bool:
     """
     Xác thực signature từ Zalo
-    Nếu không có ZALO_SECRET_KEY thì bỏ qua verification (cho phép test local)
+    Nếu không có ZALO_SECRET_KEY thì bỏ qua verification (chỉ cho local dev)
     """
-    # Bỏ qua verify nếu không có secret key (cho phép test local)
     if not ZALO_SECRET_KEY or ZALO_SECRET_KEY.strip() == '':
-        print("⚠️  Warning: ZALO_SECRET_KEY không có, bỏ qua verification")
+        print("⚠️  Warning: ZALO_SECRET_KEY không có, bỏ qua verification (local only)")
         return True
     
     try:
@@ -47,11 +51,10 @@ def verify_zalo_signature(data: bytes, signature: str) -> bool:
             data,
             hashlib.sha256
         ).hexdigest()
-        
         return hmac.compare_digest(signature, expected_signature)
     except Exception as e:
         print(f"Error verifying signature: {e}")
-        # Nếu có lỗi, cho phép pass (cho phép test)
+        # Local dev: cho phép pass để test
         return True
 
 def handle_statistics_command(user_id: str, message: str) -> str:

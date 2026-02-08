@@ -1,7 +1,7 @@
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import os
 import base64
 import tempfile
@@ -19,7 +19,7 @@ class GoogleSheetsService:
         ]
         
         # Hỗ trợ cả file và base64 (cho Vercel)
-        credentials_path = self._get_credentials_path()
+        credentials_path, is_temp = self._get_credentials_path()
         
         creds = Credentials.from_service_account_file(credentials_path, scopes=scope)
         self.client = gspread.authorize(creds)
@@ -28,11 +28,14 @@ class GoogleSheetsService:
         # Lấy hoặc tạo sheets
         self._init_sheets()
         
-        # Cleanup temp file nếu có
-        self._temp_creds_file = credentials_path if credentials_path != GOOGLE_CREDENTIALS_PATH else None
+        # Lưu temp file path để cleanup sau
+        self._temp_creds_file = credentials_path if is_temp else None
     
-    def _get_credentials_path(self) -> str:
-        """Lấy đường dẫn credentials, hỗ trợ base64 cho Vercel"""
+    def _get_credentials_path(self) -> Tuple[str, bool]:
+        """
+        Lấy đường dẫn credentials, hỗ trợ base64 cho Vercel
+        Returns: (path, is_temp_file)
+        """
         # Kiểm tra base64 từ environment variable (cho Vercel)
         creds_base64 = os.getenv('GOOGLE_CREDENTIALS_BASE64')
         if creds_base64:
@@ -45,7 +48,7 @@ class GoogleSheetsService:
                 temp_file.write(creds_json)
                 temp_file.close()
                 
-                return temp_file.name
+                return temp_file.name, True
             except Exception as e:
                 print(f"Error decoding base64 credentials: {e}")
                 raise
@@ -57,7 +60,16 @@ class GoogleSheetsService:
                 f"or ensure file exists: {GOOGLE_CREDENTIALS_PATH}"
             )
         
-        return GOOGLE_CREDENTIALS_PATH
+        return GOOGLE_CREDENTIALS_PATH, False
+    
+    def __del__(self):
+        """Cleanup temp file khi object bị destroy"""
+        if hasattr(self, '_temp_creds_file') and self._temp_creds_file:
+            try:
+                if os.path.exists(self._temp_creds_file):
+                    os.unlink(self._temp_creds_file)
+            except Exception as e:
+                print(f"Warning: Could not cleanup temp file {self._temp_creds_file}: {e}")
     
     def _init_sheets(self):
         """Khởi tạo các sheet nếu chưa có"""
