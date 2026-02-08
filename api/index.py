@@ -76,7 +76,24 @@ def handle_statistics_command(user_id: str, message: str) -> str:
     """Xử lý lệnh thống kê"""
     try:
         import re
-        sheets_service = get_sheets_service()
+        print(f"📊 Processing statistics - user_id: {user_id}, message: {message}")
+        
+        # Khởi tạo service
+        try:
+            sheets_service = get_sheets_service()
+            print("✅ Google Sheets service initialized")
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Error initializing Google Sheets: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            # Trả về thông báo lỗi cụ thể
+            if "credentials" in error_msg.lower() or "credential" in error_msg.lower():
+                return "❌ Lỗi: Google Credentials không hợp lệ. Kiểm tra GOOGLE_CREDENTIALS_BASE64"
+            elif "sheet" in error_msg.lower() or "spreadsheet" in error_msg.lower():
+                return "❌ Lỗi: Không thể kết nối Google Sheets. Kiểm tra GOOGLE_SHEET_ID và quyền truy cập"
+            else:
+                return f"❌ Lỗi kết nối Google Sheets: {error_msg[:100]}"
         
         month = None
         year = None
@@ -93,7 +110,19 @@ def handle_statistics_command(user_id: str, message: str) -> str:
         if year_match:
             year = int(year_match.group(1))
         
-        stats = sheets_service.get_statistics(user_id=user_id, month=month, year=year)
+        print(f"📊 Getting statistics - month: {month}, year: {year}")
+        
+        # Lấy thống kê
+        try:
+            stats = sheets_service.get_statistics(user_id=user_id, month=month, year=year)
+            print(f"✅ Statistics retrieved: {stats.get('so_luong', 0)} transactions")
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Error getting statistics: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return f"❌ Lỗi khi lấy thống kê: {error_msg[:100]}"
+        
         total_thu = stats.get('total_thu', 0)
         total_chi = stats.get('total_chi', 0)
         chenh_lech = total_thu - total_chi
@@ -121,13 +150,15 @@ def handle_statistics_command(user_id: str, message: str) -> str:
                 chi = data.get('Chi', 0)
                 if thu > 0 or chi > 0:
                     response += f"• {danh_muc}: Thu {thu:,.0f} | Chi {chi:,.0f}\n"
+        else:
+            response += "📋 Chưa có dữ liệu theo danh mục\n"
         
         return response
     except Exception as e:
-        print(f"Error handling statistics: {e}")
+        print(f"❌ Error handling statistics: {e}")
         import traceback
         traceback.print_exc()
-        return "❌ Có lỗi xảy ra khi lấy thống kê. Vui lòng thử lại sau."
+        return f"❌ Có lỗi xảy ra: {str(e)[:100]}"
 
 def handle_transaction(user_id: str, message: str) -> str:
     """Xử lý giao dịch thu chi"""
@@ -269,9 +300,21 @@ async def health():
 async def test_webhook(request: Request):
     """Test endpoint - không cần signature (chỉ để debug)"""
     try:
-        data = await request.json()
-        print(f"🧪 Test webhook received: {json.dumps(data, ensure_ascii=False, indent=2)}")
-        return JSONResponse(content={'status': 'ok', 'received': data})
+        # Đọc body, có thể rỗng
+        body = await request.body()
+        if body:
+            try:
+                data = await request.json()
+                print(f"🧪 Test webhook received JSON: {json.dumps(data, ensure_ascii=False, indent=2)}")
+                return JSONResponse(content={'status': 'ok', 'received': data})
+            except:
+                print(f"🧪 Test webhook received raw body: {body.decode('utf-8', errors='ignore')}")
+                return JSONResponse(content={'status': 'ok', 'received_raw': body.decode('utf-8', errors='ignore')})
+        else:
+            print("🧪 Test webhook received empty body")
+            return JSONResponse(content={'status': 'ok', 'message': 'Empty body received'})
     except Exception as e:
         print(f"🧪 Test webhook error: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(content={'status': 'error', 'error': str(e)}, status_code=500)
